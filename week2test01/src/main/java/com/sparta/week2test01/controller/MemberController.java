@@ -17,6 +17,7 @@ public class MemberController {
 
     /**
      * 한 회원의 userId가 주었을때 회원 정보를 조회하는 API
+     * 올라가는지 테스트
      */
     @GetMapping("/member/{id}")
     public MemberResponseDto getMemberInfo(@PathVariable Long id) {
