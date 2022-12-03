@@ -11,14 +11,18 @@ import javax.persistence.*;
 
 @Getter
 @Setter
-@Entity // DB 테이블 역할을 합니다.
+@Entity         // DB 테이블 역할을 합니다.
 @NoArgsConstructor
-public class Product extends Timestamped{
+public class Product extends Timestamped {
 
-    @Id
+    @Id         // JPA 가 객체를 관리할 때 식별할 기본키 지정
+                // @GeneratedValue 기본키 생성을 DB 에 위임하는 방식으로 id 값을 따로 할당하지
+                // 않아도 DB가 자동으로 AUTO_INCREMENT를 하여 기본키를 생성해준다
     @GeneratedValue(strategy = GenerationType.IDENTITY) // ID가 자동으로 생성 및 증가합니다.
     private Long id;
 
+    // @Column 은 객체 필드를 테이블의 컬럼에 매핑시켜주는 어노테이션이다.
+    // 즉 테이블의 열에 위치한다.
     @Column(nullable = false)
     private String title;
 
@@ -34,12 +38,16 @@ public class Product extends Timestamped{
     @Column(nullable = false)
     private int myprice;
 
-    public Product(ProductRequestDto requestDto) {
+    @Column(nullable = false)
+    private Long userId;
+
+    public Product(ProductRequestDto requestDto, Long userId) {
         this.title = requestDto.getTitle();
         this.image = requestDto.getImage();
         this.link = requestDto.getLink();
         this.lprice = requestDto.getLprice();
         this.myprice = 0;
+        this.userId = userId;
     }
 
     public void update(ProductMypriceRequestDto requestDto) {
