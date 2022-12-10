@@ -2,12 +2,15 @@ package com.sparta.myselectshop.jwt;
 
 
 import com.sparta.myselectshop.entity.UserRoleEnum;
+import com.sparta.myselectshop.security.UserDetailsServiceImpl;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SecurityException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -23,6 +26,8 @@ import java.util.Date;
 @Component
 @RequiredArgsConstructor
 public class JwtUtil {
+
+    private final UserDetailsServiceImpl userDetailsService;
 
     // 클라이언트가 username 과 password 로 로그인 성공하면
     // 로그인 정보 를 JWT 로 암호화(secret key 사용) 해서 Token 을 반환한다.
@@ -145,4 +150,9 @@ public class JwtUtil {
         return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
     }
 
+    // 인증 객체 생성
+    public UsernamePasswordAuthenticationToken createAuthentication(String username) {
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        return new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+    }
 }

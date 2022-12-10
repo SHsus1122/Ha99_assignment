@@ -3,163 +3,117 @@ package com.sparta.myselectshop.service;
 import com.sparta.myselectshop.dto.ProductMypriceRequestDto;
 import com.sparta.myselectshop.dto.ProductRequestDto;
 import com.sparta.myselectshop.dto.ProductResponseDto;
+import com.sparta.myselectshop.entity.Folder;
 import com.sparta.myselectshop.entity.Product;
 import com.sparta.myselectshop.entity.User;
 import com.sparta.myselectshop.entity.UserRoleEnum;
-import com.sparta.myselectshop.jwt.JwtUtil;
 import com.sparta.myselectshop.naver.dto.ItemDto;
+import com.sparta.myselectshop.repository.FolderRepository;
 import com.sparta.myselectshop.repository.ProductRepository;
-import com.sparta.myselectshop.repository.UserRepository;
-import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.servlet.http.HttpServletRequest;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class ProductService {
 
+    private final FolderRepository folderRepository;
     private final ProductRepository productRepository;
-    private final UserRepository userRepository;
-    private final JwtUtil jwtUtil;
 
-    // 관심 상품 추가 부분
+    public static final int MIN_MY_PRICE = 100;
+
     @Transactional
-    public ProductResponseDto createProduct(ProductRequestDto requestDto, HttpServletRequest request) {
-        // Request에서 Token 가져오기
-        String token = jwtUtil.resolveToken(request);
-        Claims claims;
+    public ProductResponseDto createProduct(ProductRequestDto requestDto, User user) {
 
-        // 토큰이 있는 경우에만 관심상품 추가 가능
-        if (token != null) {
-            if (jwtUtil.validateToken(token)) {
-                // 토큰에서 사용자 정보 가져오기
-                claims = jwtUtil.getUserInfoFromToken(token);
-            } else {
-                throw new IllegalArgumentException("Token Error");
-            }
+        // 요청받은 DTO 로 DB에 저장할 객체 만들기
+        Product product = productRepository.saveAndFlush(new Product(requestDto, user.getId()));
 
-            // 토큰에서 가져온 사용자 정보를 사용하여 DB 조회
-            User user = userRepository.findByUsername(claims.getSubject()).orElseThrow(
-                    () -> new IllegalArgumentException("사용자가 존재하지 않습니다.")
-            );
-
-            // 요청받은 DTO 로 DB에 저장할 객체 만들기
-            // product 에 userid 가 들어가는데 이를 말로하면 product 와 user 가 연관관계가 있다고 한다.
-            // 결론은 새롭게 만들어지는 product 에 만들 때 userid 를 같이 넣어준다.
-            Product product = productRepository.saveAndFlush(new Product(requestDto, user.getId()));
-
-            return new ProductResponseDto(product);
-        } else {
-            return null;
-        }
+        return new ProductResponseDto(product);
     }
 
-
-    // 관심 상품 조회 부분
-    // 아래의 코드가 긴 이유는 토큰을 통해서 검증이 된 유저만 조회가 가능하게 되어있다.
     @Transactional(readOnly = true)
-    public List<ProductResponseDto> getProducts(HttpServletRequest request) {
-        // Request 에서 Token 가져오기
-        String token = jwtUtil.resolveToken(request);
+    public Page<Product> getProducts(User user,
+                                     int page, int size, String sortBy, boolean isAsc) {
+        // 페이징 처리
+        Sort.Direction direction = isAsc ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Sort sort = Sort.by(direction, sortBy);
+        Pageable pageable = PageRequest.of(page, size, sort);
+        // 사용자 권한 가져와서 ADMIN 이면 전체 조회, USER 면 본인이 추가한 부분 조회
+        UserRoleEnum userRoleEnum = user.getRole();
 
-        // Claims 는 JWT 안에 들어있는 정보들을 담을 수 있는 객체
-        Claims claims;
+        Page<Product> products;
 
-        // 토큰이 있는 경우에만 관심상품 조회 가능
-        if (token != null) {
-            // Token 검증
-            if (jwtUtil.validateToken(token)) {
-                // 토큰에서 사용자 정보 가져오기
-                claims = jwtUtil.getUserInfoFromToken(token);
-            } else {
-                throw new IllegalArgumentException("Token Error");
-            }
-
-            // 토큰에서 가져온 사용자 정보를 사용하여 DB 조회
-            // claims.getSubject() 이 안에 유저의 이름이 들어있다.
-            User user = userRepository.findByUsername(claims.getSubject()).orElseThrow(
-                    () -> new IllegalArgumentException("사용자가 존재하지 않습니다.")
-            );
-
-            // 사용자 권한 가져와서 ADMIN 이면 전체 조회, USER 면 본인이 추가한 부분 조회
-            // 위의 user 에서 가져온 권한을 userRoleEnum 에 담아준다.
-            UserRoleEnum userRoleEnum = user.getRole();
-            System.out.println("role = " + userRoleEnum);
-
-            // 반환을 하기 위한 List 를 새롭게 생성해준다.
-            List<ProductResponseDto> list = new ArrayList<>();
-            List<Product> productList;
-
-            if (userRoleEnum == UserRoleEnum.USER) {
-                // 사용자 권한이 USER일 경우
-                // 유저의 아이디와 동일한 상품만을 가져와서 담아준다.
-                productList = productRepository.findAllByUserId(user.getId());
-            } else {
-                // admin 계정이면 전부 다 가져와준다.
-                productList = productRepository.findAll();
-            }
-
-            // 가지고온 product 들을 list 에 담아서 반환한다.
-            for (Product product : productList) {
-                list.add(new ProductResponseDto(product));
-            }
-
-            return list;
-
+        if (userRoleEnum == UserRoleEnum.USER) {
+            // 사용자 권한이 USER일 경우
+            products = productRepository.findAllByUserId(user.getId(), pageable);
         } else {
-            return null;
+            products = productRepository.findAll(pageable);
         }
-    }
 
-
-    // 관심 상품 최저가
-    @Transactional
-    public Long updateProduct(Long id, ProductMypriceRequestDto requestDto, HttpServletRequest request) {
-        // Request에서 Token 가져오기
-        String token = jwtUtil.resolveToken(request);
-        Claims claims;
-
-        // 토큰이 있는 경우에만 관심상품 최저가 업데이트 가능
-        if (token != null) {
-            // Token 검증
-            if (jwtUtil.validateToken(token)) {
-                // 토큰에서 사용자 정보 가져오기
-                claims = jwtUtil.getUserInfoFromToken(token);
-            } else {
-                throw new IllegalArgumentException("Token Error");
-            }
-
-            // 토큰에서 가져온 사용자 정보를 사용하여 DB 조회
-            User user = userRepository.findByUsername(claims.getSubject()).orElseThrow(
-                    () -> new IllegalArgumentException("사용자가 존재하지 않습니다.")
-            );
-
-            // 위에서 product 에 userid 가 추가되었기 때문에 아래의 과정이 필요하다.
-            // 현재 로그인한 유저가 선택한 product 가 맞는지 확인하는 과정이다.
-            Product product = productRepository.findByIdAndUserId(id, user.getId()).orElseThrow(
-                    () -> new NullPointerException("해당 상품은 존재하지 않습니다.")
-            );
-
-            product.update(requestDto);
-
-            return product.getId();
-
-        } else {
-            return null;
-        }
+        return products;
     }
 
     @Transactional
-    public void updateBySearch (Long id, ItemDto itemDto){
+    public Long updateProduct(Long id, ProductMypriceRequestDto requestDto, User user) {
+
+        int myprice = requestDto.getMyprice();
+        if (myprice < MIN_MY_PRICE) {
+            throw new IllegalArgumentException("유효하지 않은 관심 가격입니다. 최소 " + MIN_MY_PRICE + " 원 이상으로 설정해 주세요.");
+        }
+
+        Product product = productRepository.findByIdAndUserId(id, user.getId()).orElseThrow(
+                () -> new NullPointerException("해당 상품은 존재하지 않습니다.")
+        );
+
+        product.update(requestDto);
+
+        return product.getId();
+
+    }
+
+    @Transactional
+    public void updateBySearch(Long id, ItemDto itemDto) {
         Product product = productRepository.findById(id).orElseThrow(
                 () -> new NullPointerException("해당 상품은 존재하지 않습니다.")
         );
         product.updateByItemDto(itemDto);
+    }
+
+    @Transactional
+    public Product addFolder(Long productId, Long folderId, User user) {
+
+        // 1) 상품을 조회합니다.
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new NullPointerException("해당 상품 아이디가 존재하지 않습니다."));
+
+        // 2) 관심상품을 조회합니다.
+        Folder folder = folderRepository.findById(folderId)
+                .orElseThrow(() -> new NullPointerException("해당 폴더 아이디가 존재하지 않습니다."));
+
+        // 3) 조회한 폴더와 관심상품이 모두 로그인한 회원의 소유인지 확인합니다.
+        Long loginUserId = user.getId();
+        if (!product.getUserId().equals(loginUserId) || !folder.getUser().getId().equals(loginUserId)) {
+            throw new IllegalArgumentException("회원님의 관심상품이 아니거나, 회원님의 폴더가 아닙니다~^^");
+        }
+
+        // 중복확인
+        Optional<Product> overlapFolder = productRepository.findByIdAndFolderList_Id(product.getId(), folder.getId());
+
+        if (overlapFolder.isPresent()) {
+            throw new IllegalArgumentException("중복된 폴더입니다.");
+        }
+
+        // 4) 상품에 폴더를 추가합니다.
+        product.addFolder(folder);
+
+        return product;
     }
 
 }

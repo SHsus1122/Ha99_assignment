@@ -5,24 +5,23 @@ import com.sparta.myselectshop.dto.ProductRequestDto;
 import com.sparta.myselectshop.naver.dto.ItemDto;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import javax.persistence.*;
+import java.net.MalformedURLException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
-@Setter
-@Entity         // DB 테이블 역할을 합니다.
+@Entity // DB 테이블 역할을 합니다.
 @NoArgsConstructor
-public class Product extends Timestamped {
+public class Product extends Timestamped{
 
-    @Id         // JPA 가 객체를 관리할 때 식별할 기본키 지정
-                // @GeneratedValue 기본키 생성을 DB 에 위임하는 방식으로 id 값을 따로 할당하지
-                // 않아도 DB가 자동으로 AUTO_INCREMENT를 하여 기본키를 생성해준다
+    @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY) // ID가 자동으로 생성 및 증가합니다.
     private Long id;
 
-    // @Column 은 객체 필드를 테이블의 컬럼에 매핑시켜주는 어노테이션이다.
-    // 즉 테이블의 열에 위치한다.
     @Column(nullable = false)
     private String title;
 
@@ -41,13 +40,52 @@ public class Product extends Timestamped {
     @Column(nullable = false)
     private Long userId;
 
+    @ManyToMany
+    private List<Folder> folderList = new ArrayList<>();
+
     public Product(ProductRequestDto requestDto, Long userId) {
+        // 입력값 Validation
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("회원 Id 가 유효하지 않습니다.");
+        }
+
+        if (requestDto.getTitle() == null || requestDto.getTitle().isEmpty()) {
+            throw new IllegalArgumentException("저장할 수 있는 상품명이 없습니다.");
+        }
+
+        if (!isValidUrl(requestDto.getImage())) {
+            throw new IllegalArgumentException("상품 이미지 URL 포맷이 맞지 않습니다.");
+        }
+
+        if (!isValidUrl(requestDto.getLink())) {
+            throw new IllegalArgumentException("상품 최저가 페이지 URL 포맷이 맞지 않습니다.");
+        }
+
+        if (requestDto.getLprice() <= 0) {
+            throw new IllegalArgumentException("상품 최저가가 0 이하입니다.");
+        }
+
+        // 관심상품을 등록한 회원 Id 저장
+        this.userId = userId;
         this.title = requestDto.getTitle();
         this.image = requestDto.getImage();
         this.link = requestDto.getLink();
         this.lprice = requestDto.getLprice();
         this.myprice = 0;
-        this.userId = userId;
+    }
+
+    boolean isValidUrl(String url)
+    {
+        try {
+            new URL(url).toURI();
+            return true;
+        }
+        catch (URISyntaxException exception) {
+            return false;
+        }
+        catch (MalformedURLException exception) {
+            return false;
+        }
     }
 
     public void update(ProductMypriceRequestDto requestDto) {
@@ -56,6 +94,10 @@ public class Product extends Timestamped {
 
     public void updateByItemDto(ItemDto itemDto) {
         this.lprice = itemDto.getLprice();
+    }
+
+    public void addFolder(Folder folder) {
+        this.folderList.add(folder);
     }
 
 }
